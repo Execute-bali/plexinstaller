@@ -55,23 +55,12 @@ chmod +x install.sh
 ./install.sh
 ```
 
-## Web Interface
-
-The project includes a web interface (plexdev.live.js) that provides an easy way to access the installation script.
-
-To start the web server:
-
-```bash
-node plexdev.live.js
-```
-
 ## Requirements
 
 - Linux server (Ubuntu, Debian, CentOS, RHEL, Fedora, Arch, or openSUSE)
 - Root/sudo access
 - Node.js 20+
 - Internet connection
-- Domain name (for SSL setup)
 
 ## Disclaimer
 
