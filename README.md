@@ -1,4 +1,4 @@
-Collecting workspace information# PlexDev Installer
+# PlexDev Installer
 
 An unofficial installer utility for PlexDevelopment products that simplifies the setup process on Linux servers.
 
