@@ -1,4 +1,4 @@
-# PlexDev Installer (UNOFFICIAL)
+# PlexInstaller (UNOFFICIAL)
 
 An unofficial installer utility for PlexDevelopment products that simplifies the setup process on Linux servers.
 
