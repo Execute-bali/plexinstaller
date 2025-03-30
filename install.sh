@@ -967,7 +967,9 @@ main() {
     
     case $choice in
         1)
-            read -p "Install with dashboard? (y/n): " dashboard
+            echo -e "Plex Tickets by default, does not come with it by default, but rather a seperate addon you need to buy."
+            echo -e "The dashboard can be found here: https://plexdevelopment.net/products/dashboard"
+            read -p "Do you want to install Plex Tickets with the dashboard? (y/n): " dashboard
             
             if [[ $dashboard == "y" || $dashboard == "Y" ]]; then
                 install_plextickets true
@@ -988,11 +990,11 @@ main() {
             install_plexforms
             ;;
         0)
-            print_warning "Installation canceled"
+            print_warning "Installation cancelled. Exiting..."
             exit 0
             ;;
         *)
-            print_error "Invalid choice"
+            print_error "Invalid choice. Exiting..."
             exit 1
             ;;
     esac
