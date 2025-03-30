@@ -272,8 +272,8 @@ app.get('/', (req, res) => {
             <p>Run the following command in your terminal to start the installation:</p>
             
             <div class="code-block">
-                <code>curl -sSL https://plexdev.live/install.sh | bash</code>
-                <button class="copy-btn" onclick="copyToClipboard('curl -sSL https://plexdev.live/install.sh | bash')">Copy</button>
+                <code>curl -sSL https://plexdev.live/install.sh | bash -i</code>
+                <button class="copy-btn" onclick="copyToClipboard('curl -sSL https://plexdev.live/install.sh | bash -i')">Copy</button>
             </div>
         </div>
         
