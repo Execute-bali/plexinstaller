@@ -993,7 +993,7 @@ main() {
             ;;
         *)
             print_error "Invalid choice"
-            exit 1c
+            exit 1
             ;;
     esac
     
