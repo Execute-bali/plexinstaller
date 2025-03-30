@@ -600,7 +600,7 @@ install_plextickets() {
     local base_path="$INSTALL_DIR/plextickets"
     
     # Get archive path
-    read -p "Enter the path to the PlexTickets archive file (zip/rar): " archive_path
+    read -p "Enter the path to the PlexTickets archive file (zip/rar): " archive_path </dev/tty
     
     # Extract product and get the actual path (capture only the last line)
     local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
@@ -617,15 +617,15 @@ install_plextickets() {
     # Check if dashboard should be installed
     if [ "$with_dashboard" = true ]; then
         local dashboard_port
-        read -p "Enter port for PlexTickets Dashboard (default: 3000): " dashboard_port
+        read -p "Enter port for PlexTickets Dashboard (default: 3000): " dashboard_port </dev/tty
         dashboard_port=${dashboard_port:-3000}
         # Open dashboard port in firewall
         open_port "$dashboard_port" "PlexTickets Dashboard"
         
-        read -p "Enter domain for PlexTickets Dashboard (e.g., tickets.example.com): " domain
+        read -p "Enter domain for PlexTickets Dashboard (e.g., tickets.example.com): " domain </dev/tty
         read -p "Enter email for SSL certificate: " email
         
-        read -p "Enter the path to the PlexTickets Dashboard archive file (zip/rar): " dashboard_archive
+        read -p "Enter the path to the PlexTickets Dashboard archive file (zip/rar): " dashboard_archive </dev/tty
         
         # Create addons directory if it doesn't exist
         sudo mkdir -p "$install_path/addons"
@@ -636,7 +636,7 @@ install_plextickets() {
         
         if ! check_domain_dns "$domain"; then
             print_error "Domain verification failed for $domain"
-            read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway
+            read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway </dev/tty
             if [[ $proceed_anyway != "y" && $proceed_anyway != "Y" ]]; then
                 print_error "Installation aborted."
                 exit 1
@@ -651,8 +651,8 @@ install_plextickets() {
     fi
     
     # Ask about creating startup script
-    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup
-    if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
+    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup </dev/tty
+    if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then 
         create_startup_script "plextickets" "$install_path"
     fi
     
@@ -666,7 +666,7 @@ install_plexstaff() {
     local base_path="$INSTALL_DIR/plexstaff"
     
     # Get archive path
-    read -p "Enter the path to the PlexStaff archive file (zip/rar): " archive_path
+    read -p "Enter the path to the PlexStaff archive file (zip/rar): " archive_path </dev/tty
     
     # Extract product and get the actual path (capture only the last line)
     local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
@@ -684,19 +684,19 @@ install_plexstaff() {
     
     # Get port
     local port
-    read -p "Enter port for PlexStaff (default: 3001): " port
+    read -p "Enter port for PlexStaff (default: 3001): " port </dev/tty
     port=${port:-3001}
     # Open port in firewall
     open_port "$port" "PlexStaff"
     
     # Get domain and email
-    read -p "Enter domain for PlexStaff (e.g., staff.example.com): " domain
-    read -p "Enter email for SSL certificate: " email
+    read -p "Enter domain for PlexStaff (e.g., staff.example.com): " domain </dev/tty
+    read -p "Enter email for SSL certificate: " email </dev/tty
     
     # Check if domain is pointed to this server
     if ! check_domain_dns "$domain"; then
         print_error "Domain verification failed for $domain"
-        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway
+        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway </dev/tty
         if [[ $proceed_anyway != "y" && $proceed_anyway != "Y" ]]; then
             print_error "Installation aborted."
             exit 1
@@ -710,7 +710,7 @@ install_plexstaff() {
     setup_ssl "$domain" "$email"
     
     # Ask about creating startup script
-    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup
+    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup </dev/tty
     if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
         create_startup_script "plexstaff" "$install_path"
     fi
@@ -725,7 +725,7 @@ install_plexstatus() {
     local base_path="$INSTALL_DIR/plexstatus"
     
     # Get archive path
-    read -p "Enter the path to the PlexStatus archive file (zip/rar): " archive_path
+    read -p "Enter the path to the PlexStatus archive file (zip/rar): " archive_path </dev/tty
     
     # Extract product and get the actual path (capture only the last line)
     local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
@@ -743,21 +743,21 @@ install_plexstatus() {
     
     # Get port
     local port
-    read -p "Enter port for PlexStatus (default: 3002): " port
+    read -p "Enter port for PlexStatus (default: 3002): " port </dev/tty
     port=${port:-3002}
     # Open port in firewall
     open_port "$port" "PlexStatus"
     
     # Get domain and email
-    read -p "Enter domain for PlexStatus (e.g., status.example.com): " domain
-    read -p "Enter email for SSL certificate: " email
+    read -p "Enter domain for PlexStatus (e.g., status.example.com): " domain </dev/tty
+    read -p "Enter email for SSL certificate: " email </dev/tty
     
 
 
     # Check if domain is pointed to this server
     if ! check_domain_dns "$domain"; then
         print_error "Domain verification failed for $domain"
-        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway
+        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway </dev/tty
         if [[ $proceed_anyway != "y" && $proceed_anyway != "Y" ]]; then
             print_error "Installation aborted."
             exit 1
@@ -768,7 +768,7 @@ install_plexstatus() {
     setup_ssl "$domain" "$email"
     
     # Ask about creating startup script
-    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup
+    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup </dev/tty
     if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
         create_startup_script "plexstatus" "$install_path"
     fi
@@ -783,7 +783,7 @@ install_plexstore() {
     local base_path="$INSTALL_DIR/plexstore"
     
     # Get archive path
-    read -p "Enter the path to the PlexStore archive file (zip/rar): " archive_path
+    read -p "Enter the path to the PlexStore archive file (zip/rar): " archive_path </dev/tty
     
     # Extract product and get the actual path (capture only the last line)
     local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
@@ -801,19 +801,19 @@ install_plexstore() {
     
     # Get port
     local port
-    read -p "Enter port for PlexStore (default: 3003): " port
+    read -p "Enter port for PlexStore (default: 3003): " port </dev/tty
     port=${port:-3003}
     # Open port in firewall
     open_port "$port" "PlexStore"
     
     # Get domain and email
-    read -p "Enter domain for PlexStore (e.g., store.example.com): " domain
-    read -p "Enter email for SSL certificate: " email
+    read -p "Enter domain for PlexStore (e.g., store.example.com): " domain </dev/tty
+    read -p "Enter email for SSL certificate: " email </dev/tty
     
     # Check if domain is pointed to this server
     if ! check_domain_dns "$domain"; then
         print_error "Domain verification failed for $domain"
-        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway
+        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway </dev/tty
         if [[ $proceed_anyway != "y" && $proceed_anyway != "Y" ]]; then
             print_error "Installation aborted."
             exit 1
@@ -847,7 +847,7 @@ install_plexstore() {
 EOF
     
     # Ask about creating startup script
-    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup
+    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup </dev/tty
     if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
         create_startup_script "plexstore" "$install_path"
     fi
@@ -862,7 +862,7 @@ install_plexforms() {
     local base_path="$INSTALL_DIR/plexforms"
     
     # Get archive path
-    read -p "Enter the path to the PlexForms archive file (zip/rar): " archive_path
+    read -p "Enter the path to the PlexForms archive file (zip/rar): " archive_path </dev/tty
     
     # Extract product and get the actual path (capture only the last line)
     local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
@@ -880,19 +880,19 @@ install_plexforms() {
     
     # Get port
     local port
-    read -p "Enter port for PlexForms (default: 3004): " port
+    read -p "Enter port for PlexForms (default: 3004): " port </dev/tty
     port=${port:-3004}
     # Open port in firewall
     open_port "$port" "PlexForms"
     
     # Get domain and email
-    read -p "Enter domain for PlexForms (e.g., forms.example.com): " domain
-    read -p "Enter email for SSL certificate: " email
+    read -p "Enter domain for PlexForms (e.g., forms.example.com): " domain </dev/tty
+    read -p "Enter email for SSL certificate: " email </dev/tty
     
     # Check if domain is pointed to this server
     if ! check_domain_dns "$domain"; then
         print_error "Domain verification failed for $domain"
-        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway
+        read -p "Do you want to proceed without proper DNS configuration? This may cause SSL setup to fail. (y/n): " proceed_anyway </dev/tty
         if [[ $proceed_anyway != "y" && $proceed_anyway != "Y" ]]; then
             print_error "Installation aborted."
             exit 1
@@ -905,7 +905,7 @@ install_plexforms() {
     setup_ssl "$domain" "$email"
     
     # Ask about creating startup script
-    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup
+    read -p "Do you want to set up auto-start on boot? (y/n): " setup_startup </dev/tty
     if [[ $setup_startup == "y" || $setup_startup == "Y" ]]; then
         create_startup_script "plexforms" "$install_path"
     fi
@@ -963,13 +963,13 @@ main() {
     echo -e "${CYAN}5) PlexForms${NC}"
     echo -e "${CYAN}0) Exit${NC}"
     
-    read -p "Enter your choice (0-5): " choice
-    
+
+    read -p "Enter your choice: " choice </dev/tty
+
+
     case $choice in
         1)
-            echo -e "Plex Tickets by default, does not come with it by default, but rather a seperate addon you need to buy."
-            echo -e "The dashboard can be found here: https://plexdevelopment.net/products/dashboard"
-            read -p "Do you want to install Plex Tickets with the dashboard? (y/n): " dashboard
+            read -p "Install with dashboard? (y/n): " dashboard </dev/tty
             
             if [[ $dashboard == "y" || $dashboard == "Y" ]]; then
                 install_plextickets true
@@ -990,11 +990,11 @@ main() {
             install_plexforms
             ;;
         0)
-            print_warning "Installation cancelled. Exiting..."
+            print_warning "Installation canceled"
             exit 0
             ;;
         *)
-            print_error "Invalid choice. Exiting..."
+            print_error "Invalid choice"
             exit 1
             ;;
     esac
