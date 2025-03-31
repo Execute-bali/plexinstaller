@@ -418,7 +418,6 @@ setup_ssl() {
     print_success "SSL certificate installed for $domain"
 }
 
-#----- Create Startup Script -----#
 create_startup_script() {
     local product=$1
     local product_path=$2
@@ -427,7 +426,7 @@ create_startup_script() {
     
     print_step "Creating startup script for $product using tmux..."
     
-    # Create a more robust startup script that will run in tmux
+    # Create the startup script that starts the bot in a tmux session
     sudo tee "$product_path/start.sh" > /dev/null << EOF
 #!/bin/bash
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -452,7 +451,7 @@ echo \$\$ > \$LOCK_FILE
 
 # Check if the tmux session already exists
 if ! /usr/bin/tmux has-session -t $tmux_session_name 2>/dev/null; then
-    # Create a new tmux session
+    # Create a new tmux session for the bot
     /usr/bin/tmux new-session -d -s $tmux_session_name "cd $product_path && /usr/bin/node ."
     echo "Created new tmux session: $tmux_session_name"
     exit 0
@@ -461,9 +460,10 @@ else
     exit 0
 fi
 EOF
+
     sudo chmod +x "$product_path/start.sh"
     
-    # Create systemd service
+    # Create or update the systemd service file with an ExecStop that kills the tmux session
     sudo tee "/etc/systemd/system/$service_name.service" > /dev/null << EOF
 [Unit]
 Description=Plex $product service
@@ -473,6 +473,7 @@ After=network.target
 Type=forking
 User=root
 ExecStart=$product_path/start.sh
+ExecStop=/usr/bin/tmux kill-session -t $tmux_session_name || true
 Restart=on-failure
 RestartSec=10
 StandardOutput=syslog
@@ -483,29 +484,26 @@ SyslogIdentifier=plex-$product
 WantedBy=multi-user.target
 EOF
 
-    # Reload systemd
+    # Reload systemd so it picks up the new service file
     sudo systemctl daemon-reload
     
-    # Enable the service to start on boot
+    # Enable the service to start on boot and start it now
     sudo systemctl enable $service_name
-    
-    # Try to start the service
     if sudo systemctl start $service_name; then
         print_success "Service started successfully"
     else
         print_warning "Service failed to start. You can check the logs with: sudo journalctl -u $service_name"
-        
-        # As a fallback, run the script directly
         print_step "Attempting to run the start script directly..."
         sudo bash "$product_path/start.sh"
     fi
     
     print_success "Startup script created for $product"
-    print_step "Please configure your bot first then you can start it with the commands below."
-    print_step "To configure the bot run this command: nano $product_path/config.yml"
-    print_step "You can start the service with: sudo systemctl start $service_name"
-    print_step "You can attach to the tmux session with: tmux attach -t $tmux_session_name"
-    print_step "The service is set to auto-start on system boot"
+    print_step "To configure the bot, run: nano $product_path/config.yml"
+    print_step "Start the service with: sudo systemctl start $service_name"
+    print_step "Stop the service with: sudo systemctl stop $service_name"
+    print_step "Restart the service with: sudo systemctl restart $service_name"
+    print_step "Attach to the tmux session with: tmux attach -t $tmux_session_name"
+    print_step "The service is set to auto-start on reboot"
 }
 #----- Extract Product -----#
 extract_product() {
