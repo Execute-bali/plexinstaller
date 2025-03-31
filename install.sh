@@ -592,18 +592,116 @@ install_npm_dependencies() {
     fi
 }
 
+
+#----- Check Existing Installation -----#
+check_existing_installation() {
+    local product="$1"
+    local install_path="$INSTALL_DIR/$product"
+    if [ -d "$install_path" ]; then
+        print_warning "An existing installation of $product was found at $install_path"
+        read -p "Do you want to purge the existing installation and proceed? (y/n): " purge_choice </dev/tty
+        if [[ "$purge_choice" == "y" || "$purge_choice" == "Y" ]]; then
+            print_step "Removing existing installation..."
+            sudo rm -rf "$install_path"
+            print_success "Existing installation removed"
+        else
+            print_warning "Installation aborted."
+            exit 0
+        fi
+    fi
+}
+
+find_archive_files() {
+    local product="$1"
+    local search_dirs=("/home" "/root" "/tmp" "/var/tmp")
+    local max_depth=3
+    local found_archives=()
+    local log_file="./archive_search_log.txt"
+    
+    echo "Archive search started: $(date)" > "$log_file"
+    echo "Searching for product: $product" >> "$log_file"
+    
+    print_step "Searching for archive files for $product..."
+    
+    for dir in "${search_dirs[@]}"; do
+        if [ -d "$dir" ]; then
+            while IFS= read -r file; do
+                found_archives+=("$file")
+                echo "Found product match: $file" >> "$log_file"
+            done < <(find "$dir" -maxdepth "$max_depth" -type f \( -iname "*${product}*.zip" -o -iname "*${product}*.rar" \) 2>/dev/null)
+        fi
+    done
+
+    if [ ${#found_archives[@]} -eq 0 ]; then
+        print_warning "No product-specific archives found. Searching for any archives..."
+        for dir in "${search_dirs[@]}"; do
+            if [ -d "$dir" ]; then
+                while IFS= read -r file; do
+                    found_archives+=("$file")
+                    echo "Found generic archive: $file" >> "$log_file"
+                done < <(find "$dir" -maxdepth "$max_depth" -type f \( -iname "*.zip" -o -iname "*.rar" \) 2>/dev/null | head -n 10)
+            fi
+        done
+    fi
+
+    if [ ${#found_archives[@]} -gt 0 ]; then
+        echo "----------------------------------------"
+        echo "FOUND ${#found_archives[@]} ARCHIVE FILES:"
+        echo "----------------------------------------"
+        local i=1
+        for archive in "${found_archives[@]}"; do
+            file_size=$(du -h "$archive" 2>/dev/null | cut -f1 || echo "unknown")
+            echo "$i) $archive ($file_size)"
+            i=$((i+1))
+        done
+        echo "0) Enter custom path"
+        echo "----------------------------------------"
+        while true; do
+            read -p "Select option (0-${#found_archives[@]}): " choice </dev/tty
+            if [[ "$choice" =~ ^[0-9]+$ ]]; then
+                if [ "$choice" -eq 0 ]; then
+                    read -p "Enter archive path: " custom_path </dev/tty
+                    ARCHIVE_PATH="$custom_path"
+                    break
+                elif [ "$choice" -ge 1 ] && [ "$choice" -le ${#found_archives[@]} ]; then
+                    ARCHIVE_PATH="${found_archives[$((choice-1))]}"
+                    break
+                else
+                    print_error "Invalid choice. Please try again."
+                fi
+            else
+                print_error "Please enter a number."
+            fi
+        done
+    else
+        print_warning "No archives found. Please enter archive path manually."
+        read -p "Archive path: " custom_path </dev/tty
+        ARCHIVE_PATH="$custom_path"
+    fi
+
+    echo "----------------------------------------"
+    echo "Archive search completed: $(date)" >> "$log_file"
+    echo "----------------------------------------"
+    
+    # Return the archive path
+    echo "$ARCHIVE_PATH"
+}
+
+
+
 #----- Install PlexTickets -----#
 install_plextickets() {
     print_header "Installing PlexTickets"
     
+    local product="plextickets"
+    check_existing_installation "$product"
+    find_archive_files "$product"
+
     local with_dashboard=$1
     local base_path="$INSTALL_DIR/plextickets"
     
-    # Get archive path
-    read -p "Enter the path to the PlexTickets archive file (zip/rar): " archive_path </dev/tty
-    
     # Extract product and get the actual path (capture only the last line)
-    local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
+    local install_path=$(extract_product "$ARCHIVE_PATH" "$base_path" | tail -n 1)
     
     # Verify the path exists (remove any escape sequences)
     if [ ! -d "$install_path" ]; then
@@ -617,6 +715,7 @@ install_plextickets() {
     # Check if dashboard should be installed
     if [ "$with_dashboard" = true ]; then
         local dashboard_port
+        local product="Dashboard"
         read -p "Enter port for PlexTickets Dashboard (default: 3000): " dashboard_port </dev/tty
         dashboard_port=${dashboard_port:-3000}
         # Open dashboard port in firewall
@@ -625,13 +724,13 @@ install_plextickets() {
         read -p "Enter domain for PlexTickets Dashboard (e.g., tickets.example.com): " domain </dev/tty
         read -p "Enter email for SSL certificate: " email
         
-        read -p "Enter the path to the PlexTickets Dashboard archive file (zip/rar): " dashboard_archive </dev/tty
+        find_archive_files "$product"
         
         # Create addons directory if it doesn't exist
         sudo mkdir -p "$install_path/addons"
         
         # Extract dashboard and get the actual path
-        local dashboard_path=$(extract_product "$dashboard_archive" "$install_path/addons" | tail -n 1)
+        local dashboard_path=$(extract_product "$ARCHIVE_PATH" "$install_path/addons" | tail -n 1)
         
         
         if ! check_domain_dns "$domain"; then
@@ -662,14 +761,13 @@ install_plextickets() {
 #----- Install PlexStaff -----#
 install_plexstaff() {
     print_header "Installing PlexStaff"
-    
     local base_path="$INSTALL_DIR/plexstaff"
-    
-    # Get archive path
-    read -p "Enter the path to the PlexStaff archive file (zip/rar): " archive_path </dev/tty
-    
+    local product="plexstaff"
+    check_existing_installation "$product"
+    find_archive_files "$product"
+
     # Extract product and get the actual path (capture only the last line)
-    local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
+    local install_path=$(extract_product "$ARCHIVE_PATH" "$base_path" | tail -n 1)
     
     # Verify the path exists
     if [ ! -d "$install_path" ]; then
@@ -724,11 +822,12 @@ install_plexstatus() {
     
     local base_path="$INSTALL_DIR/plexstatus"
     
-    # Get archive path
-    read -p "Enter the path to the PlexStatus archive file (zip/rar): " archive_path </dev/tty
-    
+    local product="plexstatus"
+    check_existing_installation "$product"
+    find_archive_files "$product"
+
     # Extract product and get the actual path (capture only the last line)
-    local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
+    local install_path=$(extract_product "$ARCHIVE_PATH" "$base_path" | tail -n 1)
     
     # Verify the path exists
     if [ ! -d "$install_path" ]; then
@@ -782,11 +881,12 @@ install_plexstore() {
     
     local base_path="$INSTALL_DIR/plexstore"
     
-    # Get archive path
-    read -p "Enter the path to the PlexStore archive file (zip/rar): " archive_path </dev/tty
-    
+    local product="plexstore"
+    check_existing_installation "$product"
+    find_archive_files "$product"
+
     # Extract product and get the actual path (capture only the last line)
-    local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
+    local install_path=$(extract_product "$ARCHIVE_PATH" "$base_path" | tail -n 1)
     
     # Verify the path exists
     if [ ! -d "$install_path" ]; then
@@ -861,11 +961,12 @@ install_plexforms() {
     
     local base_path="$INSTALL_DIR/plexforms"
     
-    # Get archive path
-    read -p "Enter the path to the PlexForms archive file (zip/rar): " archive_path </dev/tty
-    
+    local product="plexforms"
+    check_existing_installation "$product"
+    find_archive_files "$product"
+
     # Extract product and get the actual path (capture only the last line)
-    local install_path=$(extract_product "$archive_path" "$base_path" | tail -n 1)
+    local install_path=$(extract_product "$ARCHIVE_PATH" "$base_path" | tail -n 1)
     
     # Verify the path exists
     if [ ! -d "$install_path" ]; then
