@@ -735,7 +735,501 @@ find_archive_files() {
     echo "----------------------------------------"
 }
 
+show_services_status() {
+    print_header "Services Status"
+    
+    if [ ! -d "$INSTALL_DIR" ]; then
+        print_warning "No installations found in $INSTALL_DIR"
+        return
+    fi
+    
+    echo "----------------------------------------"
+    echo "| Product      | Status          | Port | Domain         |"
+    echo "----------------------------------------"
+    
+    for product in plextickets plexstaff plexstatus plexstore plexforms; do
+        if [ -d "$INSTALL_DIR/$product" ]; then
+            service_name="plex-$product"
+            status=$(systemctl is-active $service_name 2>/dev/null || echo "not installed")
+            
+            # Get port and domain from nginx config if available
+            domain="N/A"
+            port="N/A"
+            if [ -d "$NGINX_ENABLED" ]; then
+                for conf in "$NGINX_ENABLED"/*.conf; do
+                    if [ -f "$conf" ] && grep -q "$product" "$conf" 2>/dev/null; then
+                        domain=$(grep "server_name" "$conf" 2>/dev/null | awk '{print $2}' | tr -d ';' | head -1)
+                        port=$(grep "proxy_pass http://localhost:" "$conf" 2>/dev/null | sed 's/.*localhost:\([0-9]*\).*/\1/' | head -1)
+                        break
+                    fi
+                done
+            fi
+            
+            # Format with printf instead of echo -e
+            if [[ "$status" == "active" ]]; then
+                printf "| %-12s | ${GREEN}%-14s${NC} | %-4s | %-14s |\n" "$product" "$status" "$port" "$domain"
+            else
+                printf "| %-12s | ${RED}%-14s${NC} | %-4s | %-14s |\n" "$product" "$status" "$port" "$domain"
+            fi
+        fi
+    done
+    echo "----------------------------------------"
+}
 
+view_logs() {
+    local product=$1
+    local service_name="plex-$product"
+    
+    print_header "Viewing logs for $product"
+    
+    if systemctl status "$service_name" &>/dev/null; then
+        echo "Last 50 log entries:"
+        echo "----------------------------------------"
+        journalctl -u "$service_name" -n 50 --no-pager
+        echo "----------------------------------------"
+        echo "View more logs with: journalctl -u $service_name -f"
+    else
+        print_error "Service $service_name is not active"
+        
+        # Try to find tmux session logs
+        if tmux has-session -t "$service_name" 2>/dev/null; then
+            print_step "Found tmux session. Attaching..."
+            tmux attach-session -t "$service_name"
+        else
+            print_error "No tmux session found for $product"
+        fi
+    fi
+}
+
+system_health_check() {
+    print_header "System Health Check"
+    
+    # Check disk space
+    print_step "Checking disk space..."
+    disk_usage=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+    if [ "$disk_usage" -gt 85 ]; then
+        print_warning "Disk usage is high: ${disk_usage}%"
+    else
+        print_success "Disk usage is acceptable: ${disk_usage}%"
+    fi
+    
+    # Check memory
+    print_step "Checking memory usage..."
+    memory_free=$(free -m | awk 'NR==2 {print $4}')
+    if [ "$memory_free" -lt 500 ]; then
+        print_warning "Low memory available: ${memory_free} MB"
+    else
+        print_success "Memory available: ${memory_free} MB"
+    fi
+    
+    # Check services
+    print_step "Checking services status..."
+    for product in plextickets plexstaff plexstatus plexstore plexforms; do
+        if [ -d "$INSTALL_DIR/$product" ]; then
+            service_name="plex-$product"
+            if systemctl is-active --quiet "$service_name"; then
+                print_success "$service_name is running"
+            else
+                print_warning "$service_name is not running"
+            fi
+        fi
+    done
+    
+    # Check nginx
+    if systemctl is-active --quiet nginx; then
+        print_success "Nginx is running"
+    else
+        print_warning "Nginx is not running"
+    fi
+    
+    # Check SSL certificates
+    print_step "Checking SSL certificates..."
+    for domain_conf in "$NGINX_ENABLED"/*.conf; do
+        if [ -f "$domain_conf" ]; then
+            domain=$(grep "server_name" "$domain_conf" | awk '{print $2}' | tr -d ';' | head -1)
+            if [ -n "$domain" ]; then
+                cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+                if [ -f "$cert_path" ]; then
+                    expiry_date=$(sudo openssl x509 -enddate -noout -in "$cert_path" | cut -d= -f2)
+                    expiry_epoch=$(sudo date -d "$expiry_date" +%s)
+                    current_epoch=$(date +%s)
+                    days_left=$(( (expiry_epoch - current_epoch) / 86400 ))
+                    
+                    if [ "$days_left" -lt 15 ]; then
+                        print_warning "SSL for $domain expires in $days_left days"
+                    else
+                        print_success "SSL for $domain valid for $days_left more days"
+                    fi
+                else
+                    print_warning "No SSL certificate found for $domain"
+                fi
+            fi
+        fi
+    done
+}
+
+
+
+manage_backups() {
+    while true; do
+        clear
+        print_header "Backup Management"
+        
+        local backup_dir="$INSTALL_DIR/backups"
+        sudo mkdir -p "$backup_dir"
+        
+        echo -e "${YELLOW}Backup Options:${NC}"
+        echo -e "${CYAN}1) Create backup of a product${NC}"
+        echo -e "${CYAN}2) Create backup of all products${NC}"
+        echo -e "${CYAN}3) List available backups${NC}"
+        echo -e "${CYAN}4) Restore from backup${NC}"
+        echo -e "${CYAN}5) Delete backup${NC}"
+        echo -e "${CYAN}6) Return to main menu${NC}"
+        
+        read -p "Enter your choice: " backup_choice </dev/tty
+        
+        case $backup_choice in
+            1)
+                # Backup single product
+                echo "Available products:"
+                local products=()
+                local i=1
+                for product in plextickets plexstaff plexstatus plexstore plexforms; do
+                    if [ -d "$INSTALL_DIR/$product" ]; then
+                        echo "$i) $product"
+                        products+=("$product")
+                        i=$((i+1))
+                    fi
+                done
+                
+                if [ ${#products[@]} -eq 0 ]; then
+                    print_warning "No products installed"
+                    read -p "Press Enter to continue..." </dev/tty
+                    continue
+                fi
+                
+                read -p "Select product to backup (1-${#products[@]}): " prod_choice </dev/tty
+                if [[ "$prod_choice" =~ ^[0-9]+$ ]] && [ "$prod_choice" -ge 1 ] && [ "$prod_choice" -le ${#products[@]} ]; then
+                    backup_installation "${products[$((prod_choice-1))]}"
+                else
+                    print_error "Invalid choice"
+                fi
+                ;;
+            2)
+                # Backup all products
+                print_step "Creating backup of all products..."
+                local timestamp=$(date +"%Y%m%d_%H%M%S")
+                local backup_file="$backup_dir/all_products_$timestamp.tar.gz"
+                
+                local has_products=false
+                for product in plextickets plexstaff plexstatus plexstore plexforms; do
+                    if [ -d "$INSTALL_DIR/$product" ]; then
+                        has_products=true
+                        break
+                    fi
+                done
+                
+                if [ "$has_products" = true ]; then
+                    sudo tar -czf "$backup_file" -C "$INSTALL_DIR" $(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -type d -name "plex*" -printf "%f ")
+                    print_success "Backup created: $backup_file"
+                else
+                    print_warning "No products installed"
+                fi
+                ;;
+            3)
+                # List backups
+                list_backups
+                ;;
+            4)
+                # Restore backup
+                restore_backup
+                ;;
+            5)
+                # Delete backup
+                delete_backup
+                ;;
+            6) 
+                return 
+                ;;
+            *) 
+                print_error "Invalid choice" 
+                ;;
+        esac
+        
+        read -p "Press Enter to continue..." </dev/tty
+    done
+}
+
+list_backups() {
+    local backup_dir="$INSTALL_DIR/backups"
+    
+    print_header "Available Backups"
+    
+    if [ ! -d "$backup_dir" ] || [ -z "$(ls -A "$backup_dir" 2>/dev/null)" ]; then
+        print_warning "No backups found"
+        return
+    fi
+    
+    echo "----------------------------------------"
+    echo "| ID | Date               | Product    | Size     |"
+    echo "----------------------------------------"
+    
+    local i=1
+    while IFS= read -r file; do
+        local filename=$(basename "$file")
+        local date_part=$(echo "$filename" | grep -o '[0-9]\{8\}_[0-9]\{6\}')
+        local formatted_date=$(date -d "$(echo $date_part | sed 's/_/ /')" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown date")
+        local product=$(echo "$filename" | sed -E 's/(.*)_[0-9]{8}_[0-9]{6}\.tar\.gz/\1/')
+        local size=$(du -h "$file" | cut -f1)
+        
+        printf "| %-2s | %-18s | %-10s | %-8s |\n" "$i" "$formatted_date" "$product" "$size"
+        i=$((i+1))
+    done < <(find "$backup_dir" -name "*.tar.gz" | sort -r)
+    
+    echo "----------------------------------------"
+}
+
+restore_backup() {
+    local backup_dir="$INSTALL_DIR/backups"
+    
+    if [ ! -d "$backup_dir" ] || [ -z "$(ls -A "$backup_dir" 2>/dev/null)" ]; then
+        print_warning "No backups found"
+        return
+    fi
+    
+    print_header "Restore from Backup"
+    
+    # List backups for selection
+    local backups=()
+    local i=1
+    while IFS= read -r file; do
+        local filename=$(basename "$file")
+        local date_part=$(echo "$filename" | grep -o '[0-9]\{8\}_[0-9]\{6\}')
+        local formatted_date=$(date -d "$(echo $date_part | sed 's/_/ /')" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown date")
+        local product=$(echo "$filename" | sed -E 's/(.*)_[0-9]{8}_[0-9]{6}\.tar\.gz/\1/')
+        local size=$(du -h "$file" | cut -f1)
+        
+        echo "$i) $product ($formatted_date, $size)"
+        backups+=("$file")
+        i=$((i+1))
+    done < <(find "$backup_dir" -name "*.tar.gz" | sort -r)
+    
+    if [ ${#backups[@]} -eq 0 ]; then
+        print_warning "No backups found"
+        return
+    fi
+    
+    read -p "Select backup to restore (1-${#backups[@]}): " choice </dev/tty
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#backups[@]} ]; then
+        local selected_backup="${backups[$((choice-1))]}"
+        local filename=$(basename "$selected_backup")
+        local product=$(echo "$filename" | sed -E 's/(.*)_[0-9]{8}_[0-9]{6}\.tar\.gz/\1/')
+        
+        print_warning "Restoring will overwrite existing installation. Data may be lost."
+        read -p "Are you sure you want to restore $product? (y/n): " confirm </dev/tty
+        
+        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+            # Stop the service if running
+            if [[ "$product" != "all_products" ]]; then
+                if systemctl is-active --quiet "plex-$product"; then
+                    print_step "Stopping service plex-$product..."
+                    sudo systemctl stop "plex-$product"
+                fi
+                
+                # Remove existing installation
+                if [ -d "$INSTALL_DIR/$product" ]; then
+                    print_step "Removing existing installation..."
+                    sudo rm -rf "$INSTALL_DIR/$product"
+                fi
+                
+                # Extract backup
+                print_step "Restoring from backup..."
+                sudo tar -xzf "$selected_backup" -C "$INSTALL_DIR"
+                
+                # Restart the service
+                if systemctl list-unit-files | grep -q "plex-$product.service"; then
+                    print_step "Starting service..."
+                    sudo systemctl start "plex-$product"
+                fi
+                
+                print_success "$product restored successfully"
+            else
+                # For all products backup
+                print_step "Stopping all services..."
+                for p in plextickets plexstaff plexstatus plexstore plexforms; do
+                    if systemctl is-active --quiet "plex-$p"; then
+                        sudo systemctl stop "plex-$p"
+                    fi
+                done
+                
+                # Extract backup
+                print_step "Restoring from backup..."
+                sudo tar -xzf "$selected_backup" -C "$INSTALL_DIR"
+                
+                # Restart services
+                print_step "Restarting services..."
+                for p in plextickets plexstaff plexstatus plexstore plexforms; do
+                    if systemctl list-unit-files | grep -q "plex-$p.service"; then
+                        sudo systemctl start "plex-$p"
+                    fi
+                done
+                
+                print_success "All products restored successfully"
+            fi
+        else
+            print_warning "Restore cancelled"
+        fi
+    else
+        print_error "Invalid choice"
+    fi
+}
+
+delete_backup() {
+    local backup_dir="$INSTALL_DIR/backups"
+    
+    if [ ! -d "$backup_dir" ] || [ -z "$(ls -A "$backup_dir" 2>/dev/null)" ]; then
+        print_warning "No backups found"
+        return
+    fi
+    
+    print_header "Delete Backup"
+    
+    # List backups for selection
+    local backups=()
+    local i=1
+    while IFS= read -r file; do
+        local filename=$(basename "$file")
+        local date_part=$(echo "$filename" | grep -o '[0-9]\{8\}_[0-9]\{6\}')
+        local formatted_date=$(date -d "$(echo $date_part | sed 's/_/ /')" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown date")
+        local product=$(echo "$filename" | sed -E 's/(.*)_[0-9]{8}_[0-9]{6}\.tar\.gz/\1/')
+        local size=$(du -h "$file" | cut -f1)
+        
+        echo "$i) $product ($formatted_date, $size)"
+        backups+=("$file")
+        i=$((i+1))
+    done < <(find "$backup_dir" -name "*.tar.gz" | sort -r)
+    
+    if [ ${#backups[@]} -eq 0 ]; then
+        print_warning "No backups found"
+        return
+    fi
+    
+    read -p "Select backup to delete (1-${#backups[@]}): " choice </dev/tty
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#backups[@]} ]; then
+        local selected_backup="${backups[$((choice-1))]}"
+        
+        read -p "Are you sure you want to delete this backup? (y/n): " confirm </dev/tty
+        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+            sudo rm -f "$selected_backup"
+            print_success "Backup deleted successfully"
+        else
+            print_warning "Deletion cancelled"
+        fi
+    else
+        print_error "Invalid choice"
+    fi
+}
+
+
+manage_installations() {
+    while true; do
+        clear
+        print_header "Manage Installations"
+        
+        # Show current status of all services
+        show_services_status
+        
+        echo -e "\n${YELLOW}Management Options:${NC}"
+        echo -e "${CYAN}1) Start service${NC}"
+        echo -e "${CYAN}2) Stop service${NC}"
+        echo -e "${CYAN}3) Restart service${NC}"
+        echo -e "${CYAN}4) View logs${NC}"
+        echo -e "${CYAN}5) Edit configuration${NC}"
+        echo -e "${CYAN}6) Return to main menu${NC}"
+        
+        read -p "Enter your choice: " manage_choice </dev/tty
+        
+        case $manage_choice in
+            1|2|3|4|5)
+                read -p "Enter product name (plextickets, plexstaff, etc.): " product_name </dev/tty
+                if [ ! -d "$INSTALL_DIR/$product_name" ]; then
+                    print_error "Product $product_name not found"
+                    read -p "Press Enter to continue..." </dev/tty
+                    continue
+                fi
+                
+                case $manage_choice in
+                    1) sudo systemctl start "plex-$product_name" ;;
+                    2) sudo systemctl stop "plex-$product_name" ;;
+                    3) sudo systemctl restart "plex-$product_name" ;;
+                    4) view_logs "$product_name" ;;
+                    5) 
+                        if [ -f "$INSTALL_DIR/$product_name/config.yml" ]; then
+                            sudo nano "$INSTALL_DIR/$product_name/config.yml"
+                        else
+                            print_warning "No config.yml found. Looking for alternatives..."
+                            config_files=$(find "$INSTALL_DIR/$product_name" -name "*.json" -o -name "*.yml" -o -name "*.yaml" -o -name "*.config.js" -maxdepth 2)
+                            if [ -n "$config_files" ]; then
+                                echo "Found possible configuration files:"
+                                select config_file in $config_files; do
+                                    if [ -n "$config_file" ]; then
+                                        sudo nano "$config_file"
+                                        break
+                                    fi
+                                done
+                            else
+                                print_error "No configuration files found"
+                            fi
+                        fi
+                        ;;
+                esac
+                ;;
+            6) return ;;
+            *) print_error "Invalid choice" ;;
+        esac
+        
+        read -p "Press Enter to continue..." </dev/tty
+    done
+}
+
+
+backup_installation() {
+    local product="$1"
+    local install_path="$INSTALL_DIR/$product"
+    
+    if [ ! -d "$install_path" ]; then
+        print_error "No installation found for $product"
+        return 1
+    fi
+    
+    print_header "Backing up $product"
+    
+    local backup_dir="$INSTALL_DIR/backups"
+    local timestamp=$(date +"%Y%m%d_%H%M%S")
+    local backup_file="$backup_dir/${product}_backup_$timestamp.tar.gz"
+    
+    # Create backup directory if it doesn't exist
+    sudo mkdir -p "$backup_dir"
+    
+    # Create backup
+    print_step "Creating backup of $product..."
+    sudo tar -czf "$backup_file" -C "$INSTALL_DIR" "$product"
+    
+    if [ $? -eq 0 ]; then
+        print_success "Backup created: $backup_file"
+        
+        # Optional: copy configs separately for easy access
+        if [ -f "$install_path/config.yml" ]; then
+            sudo cp "$install_path/config.yml" "$backup_dir/${product}_config_$timestamp.yml"
+            print_step "Configuration saved separately"
+        fi
+        
+        return 0
+    else
+        print_error "Failed to create backup"
+        return 1
+    fi
+}
 
 #----- Install PlexTickets -----#
 install_plextickets() {
@@ -1104,12 +1598,15 @@ main() {
     # Product selection menu
     print_header "Product Selection"
     
-    echo -e "${YELLOW}Please select a product to install:${NC}"
-    echo -e "${CYAN}1) PlexTickets${NC}"
-    echo -e "${CYAN}2) PlexStaff${NC}" 
-    echo -e "${CYAN}3) PlexStatus${NC}"
-    echo -e "${CYAN}4) PlexStore${NC}"
-    echo -e "${CYAN}5) PlexForms${NC}"
+    echo -e "${YELLOW}Please select an option:${NC}"
+    echo -e "${CYAN}1) Install PlexTickets${NC}"
+    echo -e "${CYAN}2) Install PlexStaff${NC}" 
+    echo -e "${CYAN}3) Install PlexStatus${NC}"
+    echo -e "${CYAN}4) Install PlexStore${NC}"
+    echo -e "${CYAN}5) Install PlexForms${NC}"
+    echo -e "${CYAN}6) Manage Existing Installations${NC}"
+    echo -e "${CYAN}7) System Health Check${NC}"
+    echo -e "${CYAN}8) Manage Backups${NC}"
     echo -e "${CYAN}0) Exit${NC}"
     
 
@@ -1137,6 +1634,19 @@ main() {
             ;;
         5)
             install_plexforms
+            ;;
+        6)
+            manage_installations
+            main  # Return to main menu after management
+            ;;
+        7)
+            system_health_check
+            read -p "Press Enter to return to the main menu..." </dev/tty
+            main
+            ;;
+        8)
+            manage_backups
+            main  # Return to main menu after backup management
             ;;
         0)
             print_warning "Installation canceled"
