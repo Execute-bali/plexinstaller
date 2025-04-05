@@ -511,12 +511,19 @@ extract_product() {
     local extract_path=$2
     local product_name=$(basename "$extract_path")
     
+    # Check if this is an unobfuscated version
+    local is_unobf=false
+    if [[ "$archive_path" == *"-Unobf"* ]]; then
+        is_unobf=true
+        print_step "Processing unobfuscated source code version"
+    fi
+    
     print_step "Extracting product from $archive_path to $extract_path..."
     
     # Create directory
     sudo mkdir -p "$extract_path"
     
-    # Determine archive type and extract (redirect all output to prevent capture)
+    # Determine archive type and extract
     if [[ "$archive_path" =~ \.zip$ ]]; then
         sudo unzip -o "$archive_path" -d "$extract_path" > /dev/null 2>&1
     elif [[ "$archive_path" =~ \.rar$ ]]; then
@@ -525,17 +532,13 @@ extract_product() {
             print_step "Installing unrar..."
             case $PKG_MANAGER in
                 apt)
-                    sudo apt install -y unrar > /dev/null 2>&1
-                    ;;
+                    sudo apt install -y unrar > /dev/null 2>&1 ;;
                 dnf|yum)
-                    sudo $PKG_MANAGER install -y unrar > /dev/null 2>&1
-                    ;;
+                    sudo $PKG_MANAGER install -y unrar > /dev/null 2>&1 ;;
                 pacman)
-                    sudo pacman -S --noconfirm unrar > /dev/null 2>&1
-                    ;;
+                    sudo pacman -S --noconfirm unrar > /dev/null 2>&1 ;;
                 zypper)
-                    sudo zypper install -y unrar > /dev/null 2>&1
-                    ;;
+                    sudo zypper install -y unrar > /dev/null 2>&1 ;;
             esac
         fi
         sudo unrar x "$archive_path" "$extract_path" > /dev/null 2>&1
@@ -549,24 +552,46 @@ extract_product() {
     # Check for product subfolder without printing anything
     local final_path=""
     
-    # Check if the product folder was created inside extract_path
-    if [ -d "$extract_path/$product_name" ]; then
-        final_path="$extract_path/$product_name"
-    else
-        # Check if there's any other directory created
-        local subdir=$(find "$extract_path" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-        if [ -n "$subdir" ]; then
-            final_path="$subdir"
+    # If this is an unobfuscated version, check for folders with -Unobf suffix first
+    if [ "$is_unobf" = true ]; then
+        # Check for product-name-Unobf directory
+        if [ -d "$extract_path/${product_name}-Unobf" ]; then
+            final_path="$extract_path/${product_name}-Unobf"
+        # Check for any directory ending with -Unobf
         else
-            final_path="$extract_path"
+            local unobf_dir=$(find "$extract_path" -maxdepth 1 -type d -name "*-Unobf" | head -n 1)
+            if [ -n "$unobf_dir" ]; then
+                final_path="$unobf_dir"
+            fi
+        fi
+    fi
+    
+    # If we haven't found an unobf directory, follow the regular path resolution
+    if [ -z "$final_path" ]; then
+        # Check if the product folder was created inside extract_path
+        if [ -d "$extract_path/$product_name" ]; then
+            final_path="$extract_path/$product_name"
+        else
+            # Check if there's any other directory created
+            local subdir=$(find "$extract_path" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [ -n "$subdir" ]; then
+                final_path="$subdir"
+            else
+                final_path="$extract_path"
+            fi
         fi
     fi
     
     print_step "Installation path: $final_path"
+    
+    # Add extra information if we're using a source code version
+    if [ "$is_unobf" = true ]; then
+        print_step "Using unobfuscated source code version"
+    fi
+    
     # Return the path only
     echo "$final_path"
 }
-
 #----- Install NPM Dependencies -----#
 install_npm_dependencies() {
     local product_path=$1
@@ -614,6 +639,7 @@ find_archive_files() {
     local search_dirs=("/home" "/root" "/tmp" "/var/tmp")
     local max_depth=3
     local found_archives=()
+    local found_unobf_archives=()
     local log_file="./archive_search_log.txt"
     
     echo "Archive search started: $(date)" > "$log_file"
@@ -621,14 +647,31 @@ find_archive_files() {
     
     print_step "Searching for archive files for $product..."
     
+    # First search for unobfuscated versions specifically
     for dir in "${search_dirs[@]}"; do
         if [ -d "$dir" ]; then
             while IFS= read -r file; do
-                found_archives+=("$file")
-                echo "Found product match: $file" >> "$log_file"
+                found_unobf_archives+=("$file")
+                echo "Found unobfuscated match: $file" >> "$log_file"
+            done < <(find "$dir" -maxdepth "$max_depth" -type f \( -iname "*${product}*-Unobf*.zip" -o -iname "*${product}*-Unobf*.rar" \) 2>/dev/null)
+        fi
+    done
+    
+    # Then search for regular versions
+    for dir in "${search_dirs[@]}"; do
+        if [ -d "$dir" ]; then
+            while IFS= read -r file; do
+                # Skip if it contains -Unobf since we already included those
+                if [[ "$file" != *"-Unobf"* ]]; then
+                    found_archives+=("$file")
+                    echo "Found product match: $file" >> "$log_file"
+                fi
             done < <(find "$dir" -maxdepth "$max_depth" -type f \( -iname "*${product}*.zip" -o -iname "*${product}*.rar" \) 2>/dev/null)
         fi
     done
+
+    # Combine arrays with unobfuscated versions first
+    found_archives=("${found_unobf_archives[@]}" "${found_archives[@]}")
 
     if [ ${#found_archives[@]} -eq 0 ]; then
         print_warning "No product-specific archives found. Searching for any archives..."
@@ -649,7 +692,12 @@ find_archive_files() {
         local i=1
         for archive in "${found_archives[@]}"; do
             file_size=$(du -h "$archive" 2>/dev/null | cut -f1 || echo "unknown")
-            echo "$i) $archive ($file_size)"
+            # Mark unobfuscated versions
+            if [[ "$archive" == *"-Unobf"* ]]; then
+                echo "$i) $archive ($file_size) [Source code version]"
+            else
+                echo "$i) $archive ($file_size)"
+            fi
             i=$((i+1))
         done
         echo "0) Enter custom path"
@@ -671,6 +719,11 @@ find_archive_files() {
                 print_error "Please enter a number."
             fi
         done
+        
+        # Let the user know if they selected a source code version
+        if [[ "$ARCHIVE_PATH" == *"-Unobf"* ]]; then
+            print_step "Source code version selected (unobfuscated)"
+        fi
     else
         print_warning "No archives found. Please enter archive path manually."
         read -p "Archive path: " custom_path </dev/tty
@@ -680,9 +733,6 @@ find_archive_files() {
     echo "----------------------------------------"
     echo "Archive search completed: $(date)" >> "$log_file"
     echo "----------------------------------------"
-    
-    # Return the archive path
-    echo "$ARCHIVE_PATH"
 }
 
 
