@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unofficial PlexDevelopment Products Installer
-# This script automatically detects your Linux distribution and installs selected Plex products
+# This script automatically detects your Linux distribution and installs selected Plex products 
 
 #----- Color Definitions -----#
 RED='\033[0;31m'
