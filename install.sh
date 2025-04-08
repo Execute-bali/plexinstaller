@@ -1664,6 +1664,6 @@ main(){
     print_header "Installation Complete"
     print_success "Thank you for using PlexDevelopment Installer!"
 }
-
+install
 # Run the main function
 main
