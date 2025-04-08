@@ -1580,10 +1580,9 @@ install() {
     
     # Create install directory
     sudo mkdir -p $INSTALL_DIR
-
+    sleep 6
 }
 main(){
-    sleep 6
     clear
     echo -e "${BOLD}${CYAN}"
     echo "  _____  _           _____                 _                                  _   "
