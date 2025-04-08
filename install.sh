@@ -1557,7 +1557,7 @@ install_plexforms() {
 }
 
 #----- Main Script -----#
-main() {
+install() {
     clear
     echo -e "${BOLD}${CYAN}"
     echo "  _____  _           _____                 _                                  _   "
@@ -1581,6 +1581,9 @@ main() {
     # Create install directory
     sudo mkdir -p $INSTALL_DIR
 
+}
+main(){
+    sleep 6
     clear
     echo -e "${BOLD}${CYAN}"
     echo "  _____  _           _____                 _                                  _   "
